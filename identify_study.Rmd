@@ -1,0 +1,134 @@
+---
+title: "Identifying a Study of Interest"
+author: "Shannon E. Ellis"
+output: 
+  BiocStyle::html_document
+vignette: >
+  %\VignetteIndexEntry{recount quick start guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}  
+---
+
+```{r vignetteSetup, echo=FALSE, message=FALSE, warning = FALSE}
+## Track time spent on making the vignette
+startTime <- Sys.time()
+```
+
+# Load predicted phenotypes
+
+```{r load-predictions, message = FALSE, warning = FALSE}
+## load predicted phenotypes
+load('/dcl01/leek/data/sellis/barcoding/output/PredictedPhenotypes_v0.0.04.rda')
+df = PredictedPhenotypes #70479
+df$predicted_sex <- as.factor(tolower(df$predicted_sex))
+
+```
+
+
+# Load SRA reported metadata
+
+```{r load-meatdata, message = FALSE, warning = FALSE}
+
+## load SRA metadata
+load('/dcl01/leek/data/recount-website/metadata/metadata_sra.Rdata')
+metadata <- metadata[!is.na(metadata$bigwig_path), ]
+sra_meta = metadata
+rm(metadata)
+pd = read_csv("https://raw.githubusercontent.com/nellore/runs/master/sra/v2/hg38/SraRunInfo.csv")
+sra_meta = left_join(as.data.frame(sra_meta),pd,by=c("run"="Run","sample"="Sample"))
+colnames(sra_meta)[4] <- "sample_id"
+
+## combine metadata and predicted phentypes
+meta = left_join(sra_meta,df)
+```
+
+# Identify a study of interest
+
+```{r id-study, message = FALSE, warning = FALSE}
+
+## Looking for a paired end sequencing study
+## predicted_samplesource == tissue
+## where sex was not reported
+## N >=20 
+
+## but first, let's get studies where cancer is mentioned in the reported metadata
+df <- meta[grep("cancer", meta$characteristics),]
+## now let's be sure to include all samples from these studies (in case the controls don't have the word cancer in 'characteristics')
+projects = unique(df$project)
+df <- meta[meta$project %in% projects,]
+
+## now: let's filter on criteria of interest
+ (possible_projects <- df %>%  dplyr::filter(predicted_sequencingstrategy=="PAIRED", is.na(reported_sex), predicted_samplesource=="tissue") %>% group_by(project) %>% summarise(Count = n()) %>% dplyr::filter(Count>=20)) 
+
+ ## checking out total sample size
+ N=c()
+ for(i in 1:nrow(possible_projects)){
+  a <- print(meta[meta$project==possible_projects$project[i],] %>% nrow())
+  N = c(N,a)
+}
+
+## if samples meeting criteria and total study sample size are not the same
+## means that some samples within study do not meet above critera
+## will filter out these studies to only include studies in which all samples meet above criteria
+possible_projects <- cbind(possible_projects,N)
+
+(possible_projects = possible_projects %>% dplyr::filter(Count==N))
+
+## let's look at sex breakdown in each study
+for(i in 1:nrow(possible_projects)){
+  print(meta[meta$project==possible_projects$project[i],"predicted_sex"] %>% table())
+}
+
+# three studies match 
+# SRP027530
+# SRP029880
+# SRP055438
+```
+
+
+# Decide which of possible projects to use
+
+```{r decide-study, message = FALSE, warning = FALSE}
+## Study 1
+## SRP027530
+## https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP027530
+## Note: Abstract metnions sex breakdown, so not best study of our purpose of including sex in an analysis where it was not previously included.
+
+## Study 2
+## SRP029880
+## Publication here: http://onlinelibrary.wiley.com/doi/10.1016/j.molonc.2014.06.016/full
+
+## Study 3
+## SRP055438
+## is a Chron's study; not actually a cancer study
+## included in filtered studies b/c a few individuals have the word 'cancer' in their characteristics 
+grep("cancer",meta[meta$project==possible_projects$project[3],"characteristics"],val=T)
+
+## will use Study 2: SRP029880
+```
+
+# Vignette information
+
+```{r reproducibility}
+## Time spent creating this report:
+diff(c(startTime, Sys.time()))
+
+## Date this report was generated
+message(Sys.time())
+
+## Reproducibility info
+options(width = 120)
+devtools::session_info()
+```
+
+Code for creating the vignette
+
+```{r createVignette, eval=FALSE}
+## Create the vignette
+library('rmarkdown')
+system.time(render('/dcl01/leek/data/sellis/barcoding/phenopredict_usecase/identify_study.Rmd', 'BiocStyle::html_document'))
+
+## Extract the R code
+library('knitr')
+knit('/dcl01/leek/data/sellis/barcoding/phenopredict_usecase/identify_study.Rmd', tangle = TRUE)
+```
