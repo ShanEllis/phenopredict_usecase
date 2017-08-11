@@ -58,6 +58,45 @@ colnames(sra_meta)[4] <- "sample_id"
 meta = left_join(sra_meta,df)
 ```
 
+
+# Identify a study of interest
+
+```{r id-study, message = FALSE, warning = FALSE}
+
+## Looking for a paired end sequencing study
+## predicted_samplesource == tissue
+## where sex was not reported
+## N >=20 
+
+## but first, let's get studies where cancer is mentioned in the reported metadata
+df <- meta[grep("cancer", meta$characteristics),]
+## now let's be sure to include all samples from these studies (in case the controls don't have the word cancer in 'characteristics')
+projects = unique(df$project)
+df <- meta[meta$project %in% projects,]
+
+## now: let's filter on criteria of interest
+ (possible_projects <- df %>%  dplyr::filter(predicted_sequencingstrategy=="PAIRED", is.na(reported_sex), predicted_samplesource=="tissue") %>% group_by(project) %>% summarise(Count = n()) %>% dplyr::filter(Count>=20)) 
+
+ ## checking out total sample size
+ N=c()
+ for(i in 1:nrow(possible_projects)){
+  a <- print(meta[meta$project==possible_projects$project[i],] %>% nrow())
+  N = c(N,a)
+}
+
+## if samples meeting criteria and total study sample size are not the same
+## means that some samples within study do not meet above critera
+## will filter out these studies to only include studies in which all samples meet above criteria
+possible_projects <- cbind(possible_projects,N)
+
+(possible_projects = possible_projects %>% dplyr::filter(Count==N))
+
+## let's look at sex breakdown in each study
+for(i in 1:nrow(possible_projects)){
+  print(meta[meta$project==possible_projects$project[i],"predicted_sex"] %>% table())
+}
+```
+
 # Extract SRP029880 metadata
 
 ```{r study-meatdata, message = FALSE, warning = FALSE}
@@ -294,7 +333,8 @@ for(i in 1:length(MC_PC_p$PValue)){
 
 a<- c(nrow(NC_PC),nrow(MC_PC),nrow(NC_PC_sex),nrow(MC_PC_sex)) %>% max
 
-par(mar = c(5.1, 4.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 1.6, font.axis = 1.6, cex.axis = 1.6, cex.main=2.0)
+pdf("plots/Conc_sex.pdf",family="Roboto Condensed",height=10, width=10)
+par(mgp=c(4.5,2,0),mar = c(7, 7.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 3, font.axis = 1.6, cex.axis = 2, cex.main=3.5)
 plot(seq(1:a), conc_NC_PC_sex[1:a], 
      type = 'l', las = 0,
      xlim = c(0, a),
@@ -307,9 +347,10 @@ for(k in 1:round((a/100),0)){
     abline(h = k * 100, cex = 0.5, col = 'lightgrey')
 }
 abline(coef=c(0,1),col="grey48")
-lines(seq(1:a), conc_NC_PC_sex[1:a], col = bright["blue"], lwd = 3)
-lines(seq(1:a), conc_MC_PC_sex[1:a], col = bright["red"], lwd = 3)
-legend(0, 315, legend=c("NC:PC","MC:PC"), col=c(bright["blue"],bright["red"]),lty=1,lwd=3,bg="white", cex=1.6)
+lines(seq(1:a), conc_NC_PC_sex[1:a], col = bright["blue"], lwd = 5)
+lines(seq(1:a), conc_MC_PC_sex[1:a], col = bright["red"], lwd = 5)
+legend(0, 315, legend=c("NC:PC","MC:PC"), col=c(bright["blue"],bright["red"]),lty=1,lwd=5,bg="white", cex=2.5)
+dev.off()
 
 conc_MC_PC_sex_tissue<- NULL
 for(i in 1:length(MC_PC_p$PValue)){
@@ -318,7 +359,8 @@ for(i in 1:length(MC_PC_p$PValue)){
 
 a<- c(nrow(NC_PC),nrow(MC_PC),nrow(MC_PC_sex_tissue)) %>% max
 
-par(mar = c(5.1, 4.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 1.6, font.axis = 1.6, cex.axis = 1.6, cex.main=2.0)
+pdf("plots/Conc_sex_tissue.pdf",family="Roboto Condensed",height=10, width=10)
+par(mgp=c(4.5,2,0),mar = c(7, 7.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 3, font.axis = 1.6, cex.axis = 2, cex.main=3.5)
 plot(seq(1:a), conc_MC_PC_sex_tissue[1:a], 
      type = 'l', las = 0,
      xlim = c(0, a),
@@ -332,9 +374,9 @@ for(k in 1:round((a/100),0)){
 }
 abline(coef=c(0,1),col="grey48")
 #lines(seq(1:a), conc_NC_PC_sex_tissue[1:a], col = bright["blue"], lwd = 3)
-lines(seq(1:a), conc_MC_PC_sex_tissue[1:a], col = bright["red"], lwd = 3)
-legend(0, 315, legend=c("MC:PC"), col=c(bright["red"]),lty=1,lwd=3,bg="white", cex=1.6)
-
+lines(seq(1:a), conc_MC_PC_sex_tissue[1:a], col = bright["red"], lwd = 5)
+legend(0, 315, legend=c("MC:PC"), col=c(bright["red"]),lty=1,lwd=5,bg="white", cex=1.6)
+dev.off()
 
 ## summarize number of DGE identified
 counts_kim <- c(2861,1846) #from publication
@@ -354,11 +396,24 @@ colnames(sumdf) <- c("analysis", "comparison","genes")
 ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
   labs(y="No. of Genes",x="Comparison",title="Significantly differentially expressed genes by analysis") +
     geom_bar(stat="identity", aes(fill = analysis),position="dodge") +
-    geom_text(aes(fill=analysis),size = 6, position = position_dodge(width = 0.9),colour="black") +
+    geom_text(aes(fill=analysis),size = 12, position = position_dodge(width = 0.9),colour="black") +
     scale_fill_manual(values=c("#0CBD18","#FF6699","#3BC4C7","#FFDE0D"))+
     theme_bw()+
-    theme(legend.title=element_blank(),plot.title = element_text(hjust = 0.5),text = element_text(size=14), panel.border = element_blank(), panel.grid.major = element_blank(),
+    theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=22), panel.border = element_blank(), panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+
+pdf("plots/DGEA.pdf",family="Roboto Condensed",height=5, width=16)
+ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
+  labs(y="No. of Genes",x="Comparison",title="Significantly differentially expressed genes by analysis") +
+    geom_bar(stat="identity", aes(fill = analysis),position="dodge") +
+    geom_text(aes(fill=analysis),size = 10, position = position_dodge(width = 0.9),colour="black") +
+    scale_fill_manual(values=c("#0CBD18","#FF6699","#3BC4C7","#FFDE0D"))+
+    theme_bw()+
+    theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=30), panel.border = element_blank(), panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+dev.off()
+
+
 ```
 
 
