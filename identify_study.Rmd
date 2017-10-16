@@ -18,7 +18,7 @@ startTime <- Sys.time()
 
 ```{r load-predictions, message = FALSE, warning = FALSE}
 ## load predicted phenotypes
-load('/dcl01/leek/data/sellis/barcoding/output/PredictedPhenotypes_v0.0.04.rda')
+load('/dcl01/leek/data/sellis/barcoding/output/PredictedPhenotypes_v0.0.06.rda')
 df = PredictedPhenotypes #70479
 df$predicted_sex <- as.factor(tolower(df$predicted_sex))
 
@@ -58,7 +58,7 @@ projects = unique(df$project)
 df <- meta[meta$project %in% projects,]
 
 ## now: let's filter on criteria of interest
- (possible_projects <- df %>%  dplyr::filter(predicted_sequencingstrategy=="PAIRED", is.na(reported_sex), predicted_samplesource=="tissue") %>% group_by(project) %>% summarise(Count = n()) %>% dplyr::filter(Count>=20)) 
+ (possible_projects <- df %>%  dplyr::filter(predicted_sequencingstrategy=="PAIRED", is.na(reported_sex), predicted_samplesource=="tissue") %>% group_by(project) %>% dplyr::summarise(Count = n()) %>% dplyr::filter(Count>=20)) 
 
  ## checking out total sample size
  N=c()

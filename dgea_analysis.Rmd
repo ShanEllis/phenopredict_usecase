@@ -18,6 +18,11 @@ startTime <- Sys.time()
 library(recount)
 library(edgeR)
 library(reshape)
+library(sva)
+library(qvalue)
+library(extrafont)
+library(tidyverse)
+library("biomaRt") 
 
 ## load colors
   bright= c(red=rgb(222,45,38, maxColorValue=255), #de2d26
@@ -34,7 +39,7 @@ library(reshape)
 
 ```{r load-predictions, message = FALSE, warning = FALSE}
 ## load predicted phenotypes
-load('/dcl01/leek/data/sellis/barcoding/output/PredictedPhenotypes_v0.0.04.rda')
+load('/dcl01/leek/data/sellis/barcoding/output/PredictedPhenotypes_v0.0.06.rda')
 df = PredictedPhenotypes #70479
 df$predicted_sex <- as.factor(tolower(df$predicted_sex))
 
@@ -75,7 +80,7 @@ projects = unique(df$project)
 df <- meta[meta$project %in% projects,]
 
 ## now: let's filter on criteria of interest
- (possible_projects <- df %>%  dplyr::filter(predicted_sequencingstrategy=="PAIRED", is.na(reported_sex), predicted_samplesource=="tissue") %>% group_by(project) %>% summarise(Count = n()) %>% dplyr::filter(Count>=20)) 
+ (possible_projects <- df %>%  dplyr::filter(predicted_sequencingstrategy=="PAIRED", is.na(reported_sex), predicted_samplesource=="tissue") %>% group_by(project) %>% dplyr::summarise(Count = n()) %>% dplyr::filter(Count>=20)) 
 
  ## checking out total sample size
  N=c()
@@ -135,6 +140,21 @@ table(md$predicted_tissue)
 # Organize data and sample info
 
 ```{r organize-data, message = FALSE, warning = FALSE}
+### Get liver-specific gene information to remove in downstream analyses
+## read in 383 RefSeq Genes are preferentially expressed in liver
+## paper (Kim et al) had 309, but they don't include they're list, so I'll use all of these
+## data dowloaded fromm here : http://bioinfo.wilmer.jhu.edu/tiger/db_tissue/est/liver-index.html
+dat   <- read.csv('/dcl01/leek/data/sellis/barcoding/data/Liver_Specific.csv', header = TRUE)
+ensembl<-  useMart("ensembl", dataset="hsapiens_gene_ensembl")
+values<- dat$RefSeq
+out <- getBM(attributes=c("refseq_mrna", "ensembl_gene_id", "hgnc_symbol"), filters = "refseq_mrna", values = values, mart= ensembl)
+
+## function to rename rse object gene names
+renam <- function(x){
+    unlist(strsplit(x,"[.]"))[1]
+}
+
+
 ## Get sample information in order
 ## dx
 dx = colData(rse_gene)$title
@@ -162,15 +182,19 @@ sample_info <- data.frame(
 sample_info$sex <- droplevels(sample_info$sex)
 sample_info$tissue <- droplevels(sample_info$tissue)
 
+## tissue breakdown within metastatic samples
+sample_info %>% dplyr::filter(group=="MC") %>% dplyr::select(tissue) %>% table
+
 ## get everything in order
 tissue = as.character(sample_info$tissue)
 ## group small intestine and colon samples together
-tissue[tissue!="liver"] <- "intestine"
+tissue[tissue!="Liver"] <- "Intestine"
 sample_info$tissue = as.factor(tissue)
 
 ## are all samples predicted to have hte same sex?
-sample_info %>% group_by(sampleID,sex) %>% summarise(Count=n())
+sample_info %>% group_by(sampleID,sex) %>% dplyr::summarise(Count=n())
 # one is off (s22) -- predicted male twice and female once
+# with updated sex prediction (v06), all predicted correctly _updated
 
 ## Scale counts by taking into account the total coverage per sample
 rse <- scale_counts(rse_gene)
@@ -196,7 +220,7 @@ sample_info_MC_PC <- sample_info[sample_info$group=="MC" | sample_info$group=="P
 
 # Run DGEA (as in Kim et al.)
 
-```{r DGEA-Kim, message = FALSE, warning = FALSE}
+```{r DGEA-Kim, message = FALSE, warning = FALSE, cache=TRUE}
 ## Run DGE (as in the publication)
 ## DGE no covariates
 ## NC:PC
@@ -223,7 +247,7 @@ topTags(lrt_MC_PC)
 
 # Run DGEA (~ sex)
 
-```{r DGEA-sex, message = FALSE, warning = FALSE}
+```{r DGEA-sex, message = FALSE, warning = FALSE, cache=TRUE}
 ## add sex into analysis
 ##NC:PC
 design <- model.matrix(~sample_info_NC_PC$group+sample_info_NC_PC$sex)
@@ -245,7 +269,7 @@ topTags(lrt_MC_PC_sex)
 
 # Run DGEA (~ sex + tissue)
 
-```{r DGEA-sex-tissue, message = FALSE, warning = FALSE}
+```{r DGEA-sex-tissue, message = FALSE, warning = FALSE, cache=TRUE}
 
 ## MC:PC
 design <- model.matrix(~sample_info_MC_PC$group+sample_info_MC_PC$sex+sample_info_MC_PC$tissue)
@@ -255,6 +279,29 @@ fit_MC_PC_sex_tissue <- glmFit(y_MC_PC_sex_tissue,design)
 lrt_MC_PC_sex_tissue <- glmLRT(fit_MC_PC_sex_tissue,coef=2)
 topTags(lrt_MC_PC_sex_tissue)
 ```
+
+
+# Run DGEA (~ sex + tissue + SVS)
+
+```{r DGEA-sex-tissue-sv, message = FALSE, warning = FALSE, cache=TRUE}
+
+## run SVA
+mod0 = model.matrix(~1,data=sample_info_MC_PC)
+mod = model.matrix(~as.factor(group), data=sample_info_MC_PC)
+## remove invariant genes
+vars <- apply(counts_MC_PC,1,var)
+cm = counts_MC_PC[vars>0,]
+svobj = sva(cm,mod,mod0,n.sv=10)
+
+## MC:PC
+design <- model.matrix(~sample_info_MC_PC$group+sample_info_MC_PC$sex+sample_info_MC_PC$tissue+svobj$sv)
+y_MC_PC_sex_tissue_sv <- estimateDisp(y_MC_PC,design)
+#To perform likelihood ratio tests:
+fit_MC_PC_sex_tissue_sv <- glmFit(y_MC_PC_sex_tissue_sv,design)
+lrt_MC_PC_sex_tissue_sv <- glmLRT(fit_MC_PC_sex_tissue_sv,coef=2)
+```
+
+
 # Extract Significant Genes
 
 ```{r sig-genes, message = FALSE, warning = FALSE}
@@ -275,7 +322,11 @@ MC_PC <- topTags(lrt_MC_PC,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr
 topTags(lrt_MC_PC,j)$table %>% dim
 # topTags(lrt_MC_PC,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(PValue<0.001) %>% dim()
 # topTags(lrt_MC_PC,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(abs(logFC)>=2) %>% dim()
+## filter out liver-specific genes
+MC_PC_genes<-lapply(MC_PC$gene,renam) %>% unlist 
+MC_PC <- MC_PC[!(MC_PC_genes %in% out$ensembl_gene_id),]
 dim(MC_PC)
+
 
 ## ~sex analysis
 NC_PC_sex <- topTags(lrt_NC_PC_sex,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(PValue<0.001, abs(logFC)>=2)
@@ -288,10 +339,21 @@ MC_PC_sex <- topTags(lrt_MC_PC_sex,j)$table %>% do(mutate(.,gene=rownames(.))) %
 topTags(lrt_MC_PC_sex,j)$table %>% dim
 # topTags(lrt_MC_PC_sex,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(PValue<0.001) %>% dim()
 # topTags(lrt_MC_PC_sex,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(abs(logFC)>=2) %>% dim()
+MC_PC_genes<-lapply(MC_PC_sex$gene,renam) %>% unlist 
+MC_PC_sex <- MC_PC_sex[!(MC_PC_genes %in% out$ensembl_gene_id),]
 dim(MC_PC_sex)
 
 ## ~ sex + tissue analysis
 MC_PC_sex_tissue <- topTags(lrt_MC_PC_sex_tissue,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(PValue<0.001, abs(logFC)>=2)
+MC_PC_genes<-lapply(MC_PC_sex_tissue$gene,renam) %>% unlist 
+MC_PC_sex_tissue <- MC_PC_sex_tissue[!(MC_PC_genes %in% out$ensembl_gene_id),]
+
+## ~sex + tissue + SVs
+MC_PC_sex_tissue_sv <- topTags(lrt_MC_PC_sex_tissue_sv,j)$table %>% do(mutate(.,gene=rownames(.))) %>% dplyr::filter(PValue<0.001, abs(logFC)>=2)
+MC_PC_genes<-lapply(MC_PC_sex_tissue_sv$gene,renam) %>% unlist 
+MC_PC_sex_tissue_sv <- MC_PC_sex_tissue_sv[!(MC_PC_genes %in% out$ensembl_gene_id),]
+dim(MC_PC_sex_tissue_sv)
+
 
 ## sort p-values
 NC_PC_p <- NC_PC %>% arrange(PValue)
@@ -318,7 +380,7 @@ table(MC_PC_sex_tissue_p$gene %in% MC_PC_p$gene)
 
 # Assess concordance
 
-```{r concordance, message = FALSE, warning = FALSE, width=8, height=8}
+```{r concordance, message = FALSE, warning = FALSE, width=9, height=6}
 
 ## calculate concordance : sex
 conc_NC_PC_sex <- NULL
@@ -333,8 +395,8 @@ for(i in 1:length(MC_PC_p$PValue)){
 
 a<- c(nrow(NC_PC),nrow(MC_PC),nrow(NC_PC_sex),nrow(MC_PC_sex)) %>% max
 
-pdf("plots/Conc_sex.pdf",family="Roboto Condensed",height=10, width=10)
-par(mgp=c(4.5,2,0),mar = c(7, 7.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 3, font.axis = 1.6, cex.axis = 2, cex.main=3.5)
+# pdf("plots/Conc_sex2.pdf",family="Roboto Condensed",height=10, width=10)
+# par(mgp=c(4.5,2,0),mar = c(7, 7.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 3, font.axis = 1.6, cex.axis = 2, cex.main=3.5)
 plot(seq(1:a), conc_NC_PC_sex[1:a], 
      type = 'l', las = 0,
      xlim = c(0, a),
@@ -349,8 +411,8 @@ for(k in 1:round((a/100),0)){
 abline(coef=c(0,1),col="grey48")
 lines(seq(1:a), conc_NC_PC_sex[1:a], col = bright["blue"], lwd = 5)
 lines(seq(1:a), conc_MC_PC_sex[1:a], col = bright["red"], lwd = 5)
-legend(0, 315, legend=c("NC:PC","MC:PC"), col=c(bright["blue"],bright["red"]),lty=1,lwd=5,bg="white", cex=2.5)
-dev.off()
+legend(0, 300, legend=c("NC:PC","MC:PC"), col=c(bright["blue"],bright["red"]),lty=1,lwd=5,bg="white",bty="n", cex=2.5)
+# dev.off()
 
 conc_MC_PC_sex_tissue<- NULL
 for(i in 1:length(MC_PC_p$PValue)){
@@ -359,8 +421,8 @@ for(i in 1:length(MC_PC_p$PValue)){
 
 a<- c(nrow(NC_PC),nrow(MC_PC),nrow(MC_PC_sex_tissue)) %>% max
 
-pdf("plots/Conc_sex_tissue.pdf",family="Roboto Condensed",height=10, width=10)
-par(mgp=c(4.5,2,0),mar = c(7, 7.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 3, font.axis = 1.6, cex.axis = 2, cex.main=3.5)
+# pdf("plots/Conc_sex_tissue2.pdf",family="Roboto Condensed",height=10, width=10)
+# par(mgp=c(4.5,2,0),mar = c(7, 7.5, 4.1, 2.1),mfrow = c(1, 1), font.lab = 1.8, cex.lab = 3, font.axis = 1.6, cex.axis = 2, cex.main=3.5)
 plot(seq(1:a), conc_MC_PC_sex_tissue[1:a], 
      type = 'l', las = 0,
      xlim = c(0, a),
@@ -375,8 +437,10 @@ for(k in 1:round((a/100),0)){
 abline(coef=c(0,1),col="grey48")
 #lines(seq(1:a), conc_NC_PC_sex_tissue[1:a], col = bright["blue"], lwd = 3)
 lines(seq(1:a), conc_MC_PC_sex_tissue[1:a], col = bright["red"], lwd = 5)
-legend(0, 315, legend=c("MC:PC"), col=c(bright["red"]),lty=1,lwd=5,bg="white", cex=1.6)
-dev.off()
+legend(0, 300, legend=c("MC:PC"), col=c(bright["red"]),lty=1,lwd=5,bg="white",bty="n", cex=1.6)
+# dev.off()
+
+
 
 ## summarize number of DGE identified
 counts_kim <- c(2861,1846) #from publication
@@ -396,26 +460,195 @@ colnames(sumdf) <- c("analysis", "comparison","genes")
 ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
   labs(y="No. of Genes",x="Comparison",title="Significantly differentially expressed genes by analysis") +
     geom_bar(stat="identity", aes(fill = analysis),position="dodge") +
-    geom_text(aes(fill=analysis),size = 12, position = position_dodge(width = 0.9),colour="black") +
+    geom_text(aes(fill=analysis),size = 8, position = position_dodge(width = 0.9),colour="black") +
     scale_fill_manual(values=c("#0CBD18","#FF6699","#3BC4C7","#FFDE0D"))+
     theme_bw()+
-    theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=22), panel.border = element_blank(), panel.grid.major = element_blank(),
+    theme(legend.title=element_blank(),legend.text=element_text(size=8),plot.title = element_text(hjust = 0.5),text = element_text(size=12), panel.border = element_blank(), panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
 
-pdf("plots/DGEA.pdf",family="Roboto Condensed",height=5, width=16)
-ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
-  labs(y="No. of Genes",x="Comparison",title="Significantly differentially expressed genes by analysis") +
-    geom_bar(stat="identity", aes(fill = analysis),position="dodge") +
-    geom_text(aes(fill=analysis),size = 10, position = position_dodge(width = 0.9),colour="black") +
-    scale_fill_manual(values=c("#0CBD18","#FF6699","#3BC4C7","#FFDE0D"))+
-    theme_bw()+
-    theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=30), panel.border = element_blank(), panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
-dev.off()
-
+# pdf("plots/DGEA.pdf",family="Roboto Condensed",height=5, width=16)
+# ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
+#   labs(y="No. of Genes",x="Comparison",title="Significantly differentially expressed genes by analysis") +
+#     geom_bar(stat="identity", aes(fill = analysis),position="dodge") +
+#     geom_text(aes(fill=analysis),size = 10, position = position_dodge(width = 0.9),colour="black") +
+#     scale_fill_manual(values=c("#0CBD18","#FF6699","#3BC4C7","#FFDE0D"))+
+#     theme_bw()+
+#     theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=30), panel.border = element_blank(), panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+# dev.off()
 
 ```
 
+# Compare colon and liver expression in GTEx
+
+```{r colon-liver, message = FALSE, warning = FALSE, cache=TRUE}
+## download GTEx  gene level data (SRP012682)
+# url <- download_study('SRP012682')
+## Load the data
+load(file.path('/dcl01/leek/data/sellis/barcoding/phenopredict_usecase/SRP012682', 'rse_gene.Rdata'))
+## Scale counts
+rse <- scale_counts(rse_gene)
+
+## GTEx metadata
+load("/dcl01/leek/data/sellis/barcoding/data/rda/gtexmetadata.rda")
+gtex_meta = gtexmetadata
+gtex_meta = cbind(gtex_meta,usegtex)
+rm(gtexmetadata,usegtex)
+gtex_meta[is.na(gtex_meta[,"SMTS"]),"SMTS"] <- c("Esophagus","Skin","Stomach","Skin","Esophagus")
+usegtex = gtex_meta$usegtex
+pheno = gtex_meta
+pheno = pheno[usegtex,]
+
+## remove samples not to use in gtex
+rse <- rse[,usegtex] ## 9538 samples
+
+tissues_to_use <- (pheno$SMTS=="Liver" | pheno$SMTS=="Colon")
+rse <- rse[,tissues_to_use]
+# rse$groups <- rse
+
+## Filter count matrix
+counts <- assays(rse)$counts
+filter <- apply(counts, 1, function(x) mean(x) > 5)
+counts <- counts[filter, ]
+dim(counts) # 26,966 genes
+
+## look at a PCA
+## Calculate PCs with svd function
+expr.pca <- svd(counts)
+pd <- colData(rse)
+## Plot PCs
+groups <- factor(pd$smts)
+
+
+df = as.data.frame(expr.pca$v)
+# pdf("plots/Liver_Colon.pdf",family="Roboto Condensed")
+p <- ggplot(df, aes(V1, V2)) + 
+    geom_point(aes(colour = groups), size=2) +
+    scale_color_manual(values=c("#0CBD18", "#E8790C")) +
+    labs(x="PC1",y="PC2")+
+    theme_bw()+
+    theme(legend.title=element_blank(),legend.text=element_text(size=24),legend.position=c(0.15, 0.15),plot.title = element_text(hjust = 0.5),text = element_text(size=24), panel.border = element_blank(), panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+plot(p)
+# dev.off()
+
+# log2 scale
+cm = log2(counts+1)
+
+## run DGE
+design <- model.matrix(~ pd$smts)
+dge <- DGEList(counts = cm)
+dge <- calcNormFactors(dge)
+v <- voom(dge, design, plot = F)
+
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+log2FC <- fit$coefficients[, 2]
+p.mod <- fit$p.value[, 2]
+q.mod <- qvalue(p.mod)$q
+res_gene <- data.frame(log2FC, p.mod, q.mod)
+rownames(res_gene) <- rownames(counts)
+
+## Determine the number of genes differentially expressed at q<0.05
+sum(res_gene$q.mod < 0.05) 
+# 26408
+# 26509 _updated....although I'm not sure what changed...
+
+gene <- res_gene[order(-abs(res_gene$log2FC)),]
+
+gene %>% 
+    rownames_to_column(., var = "rowname")%>% 
+    dplyr::filter(log2FC<0) %>% 
+    head
+```
+
+
+
+
+# Comparing DEGs between analyses
+```{r deg-comparison, message = FALSE, warning = FALSE}
+# hypothesize that MC_PC results more highly overlap with GTEx than NC_PC
+
+genenames <-unlist(lapply(rownames(res_gene),renam))
+remove<-genenames %in% out$ensembl_gene_id
+#283
+
+genenames2 <-unlist(lapply(rownames(lrt_MC_PC$table),renam))
+remove2<-genenames2 %in% out$ensembl_gene_id
+#290
+
+## Obtain and sort p-values for GTEx
+p.mod1 <- p.mod
+names(p.mod1) <- rownames(res_gene)
+p.mod1 <- p.mod1[!remove]
+p.mod1.sort <- p.mod1[order(p.mod1)]
+
+
+
+## Obtain and sort p-values for NC-PC
+p.mod2 <- lrt_NC_PC$table$PValue
+names(p.mod2) <- rownames(lrt_NC_PC$table)
+p.mod2<- p.mod2[!remove2]
+p.mod2.sort <- p.mod2[order(p.mod2)]
+
+## Obtain and sort p-values for MC-PC
+p.mod3 <- lrt_MC_PC$table$PValue
+names(p.mod3) <- rownames(lrt_MC_PC$table)
+p.mod3<- p.mod3[!remove2]
+p.mod3.sort <- p.mod3[order(p.mod3)]
+
+
+## Obtain and sort p-values for MC-PC_sex_tissue
+p.mod4 <- lrt_MC_PC_sex_tissue$table$PValue
+names(p.mod4) <- rownames(lrt_MC_PC_sex_tissue$table)
+p.mod4<- p.mod4[!remove2]
+p.mod4.sort <- p.mod4[order(p.mod4)]
+
+p.mod5 <- lrt_MC_PC_sex_tissue_sv$table$PValue
+names(p.mod5) <- rownames(lrt_MC_PC_sex_tissue_sv$table)
+p.mod5<- p.mod5[!remove2]
+p.mod5.sort <- p.mod5[order(p.mod5)]
+
+conc_NC_PC_GTEx <- NULL
+conc_MC_PC_GTEx <- NULL
+conc_MC_PC_GTEx_liver <- NULL
+conc_MC_PC_GTEx_sex_tissue <- NULL
+# conc_MC_PC_GTEx_sex_tissue_sv <- NULL
+
+
+for(i in seq_len(length(p.mod1.sort))) {
+    conc_NC_PC_GTEx[i] <- sum(names(p.mod1.sort)[1:i] %in% names(p.mod2.sort)[1:i])
+    conc_MC_PC_GTEx[i] <- sum(names(p.mod1.sort)[1:i] %in% names(p.mod3.sort)[1:i])
+    conc_MC_PC_GTEx_sex_tissue[i] <- sum(names(p.mod1.sort)[1:i] %in% names(p.mod4.sort)[1:i])
+    # conc_MC_PC_GTEx_sex_tissue_sv[i] <- sum(names(p.mod1.sort)[1:i] %in% names(p.mod5.sort)[1:i])
+}
+
+
+## All genes
+# pdf("plots/Concordance_GTEx_Cancer2.pdf",family="Roboto Condensed")
+# par(font.lab = 2, cex.lab = 1.2, font.axis = 2, cex.axis = 1.2)
+plot(seq(1:length(p.mod1.sort)), conc_NC_PC_GTEx, 
+     type = 'l', las = 0,
+     xlim = c(0, 1000),
+     ylim = c(0, 1000),
+     xlab = 'GTEx: liver vs. colon',
+     ylab = 'Kim et al.',
+     main = 'Concordance')
+for(k in 1:5){
+    abline(v = k * 200, cex = 0.5, col = 'lightgrey')
+    abline(h = k * 200, cex = 0.5, col = 'lightgrey')
+}
+abline(coef=c(0,1),col="grey48")
+points(seq(1:length(p.mod1.sort)), conc_NC_PC_GTEx, type = 'l', lwd = 3, col = bright[7])
+lines(seq(1:length(p.mod1.sort)), conc_MC_PC_GTEx, lwd = 3,  col = bright[1])
+lines(seq(1:length(p.mod1.sort)), conc_MC_PC_GTEx_sex_tissue, lwd = 3,  col = bright[4])
+# lines(seq(1:length(p.mod1.sort)), conc_MC_PC_GTEx_sex_tissue_sv, lwd = 3,  col = bright[3])
+# lines(seq(1:length(p.mod1.sort)), conc_MC_PC_GTEx_sex_tissue, lwd = 2,  col = bright[4])
+legend('topleft', col = bright[c(1,7,4)], c("GTEx_MC:PC", "GTEx_NC:PC", "GTEx_MC:PC_sex_tissue"),lty=1,lwd=5, bg="white",bty="n")
+# , "GTEx_MC:PC_sex_tissue_sv"
+# dev.off()
+
+```
 
 # Vignette information
 
