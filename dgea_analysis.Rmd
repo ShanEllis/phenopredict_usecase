@@ -4,7 +4,7 @@ author: "Shannon E. Ellis"
 output: 
   BiocStyle::html_document
 vignette: >
-  %\VignetteIndexEntry{recount quick start guide}
+  %\VignetteIndexEntry{SRP029880}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}  
 ---
@@ -470,7 +470,6 @@ ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) +
 # ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
 #   labs(y="No. of Genes",x="Comparison",title="Significantly differentially expressed genes by analysis") +
 #     geom_bar(stat="identity", aes(fill = analysis),position="dodge") +
-#     geom_text(aes(fill=analysis),size = 10, position = position_dodge(width = 0.9),colour="black") +
 #     scale_fill_manual(values=c("#0CBD18","#FF6699","#3BC4C7","#FFDE0D"))+
 #     theme_bw()+
 #     theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=30), panel.border = element_blank(), panel.grid.major = element_blank(),
@@ -664,7 +663,7 @@ options(width = 120)
 devtools::session_info()
 ```
 
-Code for creating the vignette
+# Code for creating the vignette
 
 ```{r createVignette, eval=FALSE}
 ## Create the vignette

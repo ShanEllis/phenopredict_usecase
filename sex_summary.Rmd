@@ -4,7 +4,7 @@ author: "Shannon E. Ellis"
 output: 
   BiocStyle::html_document
 vignette: >
-  %\VignetteIndexEntry{recount quick start guide}
+  %\VignetteIndexEntry{sex summary}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}  
 ---
@@ -13,11 +13,11 @@ vignette: >
 ## Track time spent on making the vignette
 startTime <- Sys.time()
 ```
-# Set things up
 
 ```{r load-packages, message = FALSE, warning = FALSE}
 library(extrafont)
 library(gridExtra)
+library(dplyr)
 
 ## load colors
   bright= c(red=rgb(222,45,38, maxColorValue=255), #de2d26
@@ -39,7 +39,6 @@ df = PredictedPhenotypes #70479
 df$predicted_sex <- as.factor(tolower(df$predicted_sex))
 
 ## load SRA metadata
-### Load in SRA metadata
 load('/dcl01/leek/data/recount-website/metadata/metadata_sra.Rdata')
 metadata <- metadata[!is.na(metadata$bigwig_path), ]
 sra_meta = metadata
@@ -47,9 +46,50 @@ rm(metadata)
 pd = read_csv("https://raw.githubusercontent.com/nellore/runs/master/sra/v2/hg38/SraRunInfo.csv")
 sra_meta = left_join(as.data.frame(sra_meta),pd,by=c("run"="Run","sample"="Sample"))
 colnames(sra_meta)[4] <- "sample_id"
-
-## combine to look at sex across SRA
 meta = left_join(sra_meta,df)
+```
+
+# Recount breakdown
+
+```{r recount, message = FALSE, warning = FALSE}
+
+## overall breakdown
+(sex_recount <- df %>% dplyr::filter(!is.na(dataset)) %>%   group_by(predicted_sex) %>% dplyr::summarise(n = n()) %>% mutate(freq = n / sum(n)))  
+b <- ggplot(data = sex_recount, aes(x=predicted_sex, y = freq,label = freq)) + 
+  labs(y="Proportion",x="Predicted Sex",title="") +
+    geom_bar(stat="identity", aes(fill = predicted_sex),position="dodge") +
+    # geom_text(aes(fill=predicted_sex),size = 12, position = position_dodge(width = 0.9),colour="black") +
+    scale_fill_manual(values=c("#940CE8", "#0CBD18", "grey48"))+
+    theme_bw()+
+    theme(legend.title=element_blank(),legend.text=element_text(size=16),plot.title = element_text(hjust = 0.5),text = element_text(size=16), panel.border = element_blank(), panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+
+# pdf('/dcl01/leek/data/sellis/barcoding/plots/Sex_recount.pdf',family="Roboto Condensed",width=15,height=15)
+plot(b)
+# dev.off()
+```
+
+# TCGA and GTEx Breakdown
+
+```{r sra, message = FALSE, warning = FALSE}
+
+## get breakdown across projects
+(sex_recount2 <- df %>% dplyr::filter(dataset=="tcga" | dataset=="gtex") %>%   group_by(dataset,predicted_sex) %>% dplyr::summarise(n = n()) %>% mutate(freq = n / sum(n)))  
+
+## Overall summary
+b <- ggplot(data = sex_recount2, aes(x=dataset, y = freq,label = freq)) + 
+  labs(y="Proportion",x="Data Set",title="Predicted Sex") +
+    geom_bar(stat="identity", aes(fill = predicted_sex),position="dodge") +
+    # geom_text(aes(fill=predicted_sex),size = 12, position = position_dodge(width = 0.9),colour="black") +
+    scale_fill_manual(values=c("#940CE8", "#0CBD18"))+
+    theme_bw()+
+    theme(legend.title=element_blank(),legend.text=element_text(size=16),plot.title = element_text(hjust = 0.5),text = element_text(size=16), panel.border = element_blank(), panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+
+# pdf('/dcl01/leek/data/sellis/barcoding/plots/Sex_recount_summary.pdf',family="Roboto Condensed",width=15,height=15)
+plot(b)
+# dev.off()
+
 ```
 
 # Analyze sex across the SRA
@@ -64,7 +104,7 @@ meta = left_join(sra_meta,df)
 # 	labs(y="No. of Samples",x="Data Set",title="Predicted Sex") +
 #     geom_bar(stat="identity", aes(fill = predicted_sex),position="dodge") +
 #     # geom_text(aes(fill=predicted_sex),size = 12, position = position_dodge(width = 0.9),colour="black") +
-#     scale_fill_manual(values=c("#940CE8", "#0CBD18", "#E8790C"))+
+#     scale_fill_manual(values=c("#940CE8", "#0CBD18", "grey48"))+
 #     theme_bw()+
 #     theme(legend.title=element_blank(),legend.text=element_text(size=60),plot.title = element_text(hjust = 0.5),text = element_text(size=48), panel.border = element_blank(), panel.grid.major = element_blank(),
 # 		panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black")))
@@ -73,8 +113,8 @@ meta = left_join(sra_meta,df)
 plot(ggplot(data = sex_SRA, aes(x=predicted_sex, y = Count,label = Count)) + 
   labs(y="No. of Samples",x="Data Set",title="Predicted Sex") +
     geom_bar(stat="identity", aes(fill = predicted_sex),position="dodge") +
-    # geom_text(aes(fill=predicted_sex),size = 12, position = position_dodge(width = 0.9),colour="black") +
-    scale_fill_manual(values=c("#940CE8", "#0CBD18", "#E8790C"))+
+    geom_text(aes(fill=predicted_sex),size = 6, position = position_dodge(width = 0.9),colour="black") +
+    scale_fill_manual(values=c("#940CE8", "#0CBD18", "grey48"))+
     theme_bw()+
     theme(legend.title=element_blank(),legend.text=element_text(size=12),plot.title = element_text(hjust = 0.5),text = element_text(size=12), panel.border = element_blank(), panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black")))
@@ -85,286 +125,46 @@ plot(ggplot(data = sex_SRA, aes(x=predicted_sex, y = Count,label = Count)) +
 
 ```{r sex-project, message = FALSE, warning = FALSE, fig.width=9, cache=TRUE, fig.height=5}
 ## Broken down by project type 
-(proj <- meta %>%  group_by(ProjectID) %>% select(ProjectID)  %>% summarise(n = n())) 
-(sex_summ <- meta %>%  group_by(ProjectID,predicted_sex) %>% select(predicted_sex) %>% dplyr::summarise(Count = n())) 
+## combine to look at sex across SRA
+(projorder <- meta %>%  group_by(ProjectID) %>%  summarise(n=n()) %>% arrange(n) %>% mutate(index=1:nrow(.)))
 
-df = left_join(sex_summ,proj)
-df$prop = df$Count/df$n
-df$ProjectID = as.character(df$ProjectID)
+(proj <- meta %>%  group_by(ProjectID,predicted_sex) %>%  summarise(n=n()) %>% mutate(prop= n/sum(n)))
 
+test = left_join(proj,projorder, by="ProjectID") %>% arrange(index) 
 
-## assign project type
-type = rep("unassigned only",nrow(df))
-projects = unique(df$ProjectID)
-
-## y'all, I know there is a better way to do this.
-## I did it before. Then, in the world's craziest 
-## fight with Apple's cloud, I managed to misplace 
-## the code. So, in an angry (read: lazy) fit, I 
-## wrote this terribly, kludgey code that does 
-## exactly what my previously (semi)beautiful code 
-## did b/c I can't remember what I did before. 
-## We've all been there. ...right? Right?! 
-## Apologies to anyone actually looking at this. 
-## PS I wrote this paragraph while my awful 
-## for loop ran. Naturally.
-
-## Assign project type to each project
-for(i in 1:length(projects)){
-    a <- df %>% dplyr::filter(ProjectID==projects[i])
-    a$predicted_sex <- droplevels(a$predicted_sex)
-   
-    if(nrow(a)==3){
-        type[df$ProjectID==projects[i]]<-"all"
-    }else{
-        if(nrow(a)==1){
-            if(levels(a$predicted_sex)=="female"){
-                type[df$ProjectID==projects[i]]<-"female only"
-            }else{
-            if(levels(a$predicted_sex)=="male"){
-                type[df$ProjectID==projects[i]]<-"male only"
-            }
-            }
-        }else{
-            if("male" %in% levels(a$predicted_sex) & "female" %in% levels(a$predicted_sex)){
-                type[df$ProjectID==projects[i]]<-"female & male"
-            }else{
-                if("unassigned" %in% levels(a$predicted_sex) & "female" %in% levels(a$predicted_sex)){
-                    type[df$ProjectID==projects[i]]<-"female & unassigned"
-            }else{
-                if("unassigned" %in% levels(a$predicted_sex) & "male" %in% levels(a$predicted_sex)){
-                    type[df$ProjectID==projects[i]]<-"male & unassigned"
-            }
-        }}}}
+scale <- function(X){
+  (X - min(X))/diff(range(X))+0.001
 }
-df$type <- type
-
-## projects that have only one predicted sex vs more than one predicted sex
-both <- subset(df, df$prop < 1)
-one <- subset(df, df$prop == 1)
-
-(proj_type <- df %>% distinct(ProjectID, .keep_all = TRUE)%>% group_by(type) %>% summarise(Count = n()))
-
-# pdf('/dcl01/leek/data/sellis/barcoding/plots/SRA_Project_Type.pdf',family="Roboto Condensed",width=50,height=10)
-# ggplot(data = proj_type, aes(x=type,y=Count,label=Count)) + 
-#     labs(y="No. of Projects",x="Project Type",title="Project Type Summary")+ 
-#     geom_bar(stat="identity",position="dodge",fill="gray84") +
-#     scale_fill_manual(values=c(rep("gray84",7)))+
-#     geom_text(aes(fill=type),size =22, position = position_dodge(width = 0.9),colour="black") +
-#     theme_bw()+
-#     theme(legend.title=element_blank(),plot.title = element_text(hjust = 0.5),text = element_text(size=60), panel.border = element_blank(), panel.grid.major = element_blank(),
-#         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black",size=60))
-# dev.off()
-
-plot(ggplot(data = proj_type, aes(x=type,y=Count,label=Count)) + 
-    labs(y="No. of Projects",x="Project Type",title="Project Type Summary")+ 
-    geom_bar(stat="identity",position="dodge",fill="gray84") +
-    scale_fill_manual(values=c(rep("gray84",7)))+
-    geom_text(aes(fill=type),size =12, position = position_dodge(width = 0.9),colour="black") +
-    theme_bw()+
-    theme(legend.title=element_blank(),plot.title = element_text(hjust = 0.5),text = element_text(size=12), panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black",size=12)))
-
-## Broken down by Project type -- looking at proportion    
-## old confusing version
-plot(ggplot(both, aes(x=type, y=prop, fill=predicted_sex)) + 
-  geom_boxplot() +
-  labs(y="Proportion",x="Study Type",title="Sex within Study Type")+ 
-  # geom_point(position=position_dodge(width=0.75),aes(size=n,group=predicted_sex))+
-  scale_fill_manual(values=c("#940CE8", "#0CBD18", "grey48"))+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=14), panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black")))
+test$widths <- scale(test$n.y)
 
 
-## sample size by project type
-## old confusing version
-plot(ggplot(df, aes(x=type, y=n)) + 
-  geom_boxplot(outlier.shape=NA) +
-  labs(y="Sample Size",x="Study Type",title="Sample Size within Study Type")+ 
-  geom_point(position=position_jitter(width=0.1),aes(size=Count,colour=predicted_sex))+
-    # geom_jitter(position=position_jitter(width=.1, height=0),aes(size=n, colour=predicted_sex))+
-  scale_colour_manual(values=c("#940CE8", "#0CBD18", "grey48"))+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=14), panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black")))
-
-## use df to make a heatmap for each project
-a <- df
-a %>% arrange(type,n) -> b
-test <- b
-# 87 all
-# 593 female and male
-# 64 female and unassigned
-# 10 male and unassigned
-
-## add scaled value for bar size
-range_new <- function(x){(((x - min(x)) * (4 - 0.5)) / (max(x) - min(x))) + 0.5}
-newn<-range_new(b$n)
-b$newn <- newn
-# test$ProjectID <- within(test, factor(ProjectID, levels = test$ProjectID[order(newn)]))
-
-# %>%  dplyr::filter(n>=10)
-
-b %>% select(-Count) %>% spread(key=predicted_sex, value=prop)  -> out
-out[is.na(out)] <- 0
- (out %>%arrange(female, female+male, unassigned) -> out)
-
- # barplot(t(out[,5:7]),beside=F, width = out$newn,space=0,ylab="proportion",xlab="Project",col=c("#940CE8", "#0CBD18", "#E8790C"))
-
-# pdf('/dcl01/leek/data/sellis/barcoding/plots/SexBreakdownByProject_All.pdf',family="Roboto Condensed",height=30,width=200)
-# par(mgp=c(17, 1, 0),mar=c(24, 33, 6.1, 0),xpd=TRUE)
-# barplot(t(out[,5:7]),beside=F, width = out$newn,space=0,ylab="proportion",xlab="Project",col=c("#940CE8", "#0CBD18", "#E8790C"),cex.lab=20,cex.axis=20)
-# dev.off()
-
-# legend(805, 0.4, 
-       # legend = names(table(b$predicted_sex)), 
-       # fill=c("#940CE8", "#0CBD18", "#E8790C"),
-       # cex = 4)
-
-# pdf('/dcl01/leek/data/sellis/barcoding/plots/SexBreakdownByProjectType.pdf',family="Roboto Condensed",height=100,width=100)
-# par(mfrow=c(2,2),cex=10)
-
-(b %>% select(-Count) %>% spread(key=predicted_sex, value=prop) %>% dplyr::filter(type=="all") %>% arrange(n) -> out)
-out[is.na(out)] <- 0
-barplot(t(out[,5:7]),beside=F, width = out$newn,space=0,horiz=T,xlab="proportion",col=c("#940CE8", "#0CBD18", "#E8790C"))
-
-(b %>% select(-Count) %>% spread(key=predicted_sex, value=prop) %>% dplyr::filter(type=="female & male") %>% arrange(n) -> out)
-out[is.na(out)] <- 0
-barplot(t(out[,5:7]),beside=F, width = out$newn,space=0,horiz=T,xlab="proportion",col=c("#940CE8", "#0CBD18", "#E8790C"))
-
-(b %>% select(-Count) %>% spread(key=predicted_sex, value=prop) %>% dplyr::filter(type=="female & unassigned") %>% arrange(n) -> out)
-out[is.na(out)] <- 0
-barplot(t(out[,5:7]),beside=F, width = out$newn,space=0,horiz=T,xlab="proportion",col=c("#940CE8", "#0CBD18", "#E8790C"))
-
-(b %>% select(-Count) %>% spread(key=predicted_sex, value=prop) %>% dplyr::filter(type=="male & unassigned") %>% arrange(n) -> out)
-out[is.na(out)] <- 0
-barplot(t(out[,5:7]),beside=F, width = out$newn,space=0,horiz=T,xlab="proportion",col=c("#940CE8", "#0CBD18", "#E8790C"))
-# dev.off()
-
-# all
-b %>% dplyr::filter(type =='all') -> test
-test$predicted_sex <- droplevels(test$predicted_sex)
-test$ProjectID <- droplevels(as.factor(test$ProjectID))
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$type <- droplevels(as.factor(test$ProjectID))
-test$type <- factor(test$type, levels = test$type[order(test$n)])
-
-
-all <- ggplot(test, aes(y=prop,x=ProjectID))+
-  geom_bar(aes(fill=predicted_sex),position="stack",stat="identity")+
-  labs(y="proportion",x="Project",title="female, male, & unassigned")+
-  scale_fill_manual(values=c("#940CE8", "#0CBD18", "#E8790C"))+
-  coord_flip()+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=20), panel.border = element_blank(), panel.grid.major = element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"),legend.position="none")
-plot(all)
-
-# test <- b
-b %>% dplyr::filter(type =='female & male') -> test
-test$predicted_sex <- droplevels(test$predicted_sex)
-test$ProjectID <- droplevels(as.factor(test$ProjectID))
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$type <- droplevels(as.factor(test$ProjectID))
-test$type <- factor(test$type, levels = test$type[order(test$n)])
-
-
-fm <- ggplot(test, aes(y=prop,x=ProjectID))+
-  geom_bar(aes(fill=predicted_sex),position="stack",stat="identity")+
-  labs(y="proportion",x="Project",title="female & male")+
-  scale_fill_manual(values=c("#940CE8", "#0CBD18", "#E8790C"))+
-  coord_flip()+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=20), panel.border = element_blank(), panel.grid.major = element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"),legend.position="none")
-plot(fm)
-
-b %>% dplyr::filter(type =='female & unassigned') -> test
-
-# test <- b
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$predicted_sex <- droplevels(test$predicted_sex)
-test$ProjectID <- droplevels(as.factor(test$ProjectID))
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$type <- droplevels(as.factor(test$ProjectID))
-test$type <- factor(test$type, levels = test$type[order(test$n)])
-
-fu <- ggplot(test, aes(y=prop,x=ProjectID))+
-  geom_bar(aes(fill=predicted_sex),position="stack",stat="identity")+
-  labs(y="proportion",x="Project",title="female & unassigned")+
-  scale_fill_manual(values=c("#940CE8", "#E8790C"))+
-  coord_flip()+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=20), panel.border = element_blank(), panel.grid.major = element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"),legend.position="none")
-plot(fu)
-
-b %>% dplyr::filter(type =='male & unassigned') -> test
-
-# test <- b
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$predicted_sex <- droplevels(test$predicted_sex)
-test$ProjectID <- droplevels(as.factor(test$ProjectID))
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$type <- droplevels(as.factor(test$ProjectID))
-test$type <- factor(test$type, levels = test$type[order(test$n)])
-
-mu <- ggplot(test, aes(y=prop,x=ProjectID))+
-  geom_bar(aes(fill=predicted_sex),position="stack",stat="identity")+
-  labs(y="proportion",x="Project",title="male & unassigned")+
-  scale_fill_manual(values=c("#0CBD18", "#E8790C"))+
-  coord_flip()+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=20), panel.border = element_blank(), panel.grid.major = element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"),legend.position="none")
-plot(mu)
-# pdf('plots/Sex_by_Project.pdf',family="Roboto Condensed", height=16, width=16)
-# plot(grid.arrange( all, fm, fu, mu, ncol=2))
-# dev.off()
-```
-
-```{r sex-heatmap, message = FALSE, warning = FALSE, fig.width=9, cache=TRUE, fig.height=5}
-## try to make a heatmap 
-b %>% dplyr::filter(type =='all') -> test
-test$ProjectID <- droplevels(as.factor(test$ProjectID))
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$type <- factor(test$type, levels = test$type[order(test$n)])
-
-# pdf('plots/Heatmap_Sex_by_Project.pdf',family="Roboto Condensed", height=16, width=4)
-(p <- ggplot(test, aes(predicted_sex, ProjectID)) + geom_tile(aes(fill = prop), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue"))
-plot(p)
-# dev.off()
-
-# ## try to make a heatmap for all samples
-b %>% dplyr::filter(type =='all') -> test
-test$ProjectID<-factor(test$ProjectID, levels = test$ProjectID[order(test$n)])
-test$type <- factor(test$type, levels = test$type[order(test$n)])
-
-# # pdf('plots/Heatmap_Sex_by_Project.pdf',family="Roboto Condensed", height=16, width=4)
-(p <- ggplot(test, aes(predicted_sex, ProjectID)) + geom_tile(aes(fill = prop), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue"))
-plot(p)
+# pdf("plots/Sex_by_proj.pdf",width=100,family="Roboto Condensed")
+# ggplot(test, aes(x = index, y = prop,fill=predicted_sex)) +
+#     geom_bar(stat='identity',aes(width=widths))+
+#     scale_fill_manual(values=c("#940CE8", "#0CBD18", "grey48"))
 # # dev.off()
 
-plot(ggplot(b, aes(y=prop,x=ProjectID))+
-  geom_bar(aes(fill=predicted_sex),position="stack",stat="identity")+
-  labs(y="proportion",x="Project",title="all")+
-  scale_fill_manual(values=c("#940CE8", "#0CBD18", "#E8790C"))+
-  coord_flip()+
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=20), panel.border = element_blank(), panel.grid.major = element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"), legend.position="none"))
 
-## sample size by project type
-proj$ProjectID <- factor(proj$ProjectID)
-proj2 <- left_join(proj,df[,c(1,6)])  %>% distinct(ProjectID, .keep_all=TRUE)  
+proj_summ <- proj %>% group_by(ProjectID) %>% summarise(projtype = paste(predicted_sex, collapse=","), times=length(predicted_sex))
+proj_summ$type <- proj_summ$projtype
+proj_summ$type[proj_summ$times>1] <- "mixed"
+proj_summ$type[proj_summ$type=="female"] <- "female only"
+proj_summ$type[proj_summ$type=="male"] <- "male only"
+proj_summ$type[proj_summ$type=="unassigned"] <- "unassigned only"
 
-plot(ggplot(proj2, aes(x=type, y=n)) + 
-  geom_violin() +
-  labs(y="Sample Size",x="Study Type",title="Sample Size within Study Type")+ 
-  theme_bw()+
-    theme(plot.title = element_text(hjust = 0.5),text = element_text(size=14), panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black")))
+d <- proj_summ %>% group_by(type) %>% summarise(Count = n())
+
+# pdf('plots/Sex_SRA_ProjectType.pdf',width=12,height=12,family="Roboto Condensed")
+ggplot(data = d, aes(x=type, y = Count,label = Count)) + 
+    labs(y="No. of Projects",x="Project Type",title="Project Type Summary")+ 
+    geom_bar(stat="identity", aes(fill = type),position="dodge") +
+    geom_text(aes(fill=type),size = 6, position = position_dodge(width = 0.9),colour="black") +
+    scale_fill_manual(values=c("#940CE8", "#0CBD18","#E8790C", "grey48"))+
+    theme_bw()+
+    theme(legend.title=element_blank(),plot.title = element_text(hjust = 0.5),text = element_text(size=16), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),axis.text=element_text(colour="black"))
+# dev.off()
+# embed_fonts('plots/Sex_SRA_ProjectType.pdf',outfile='plots/Sex_SRA_ProjectType.pdf')
 ```
 
 # Vignette information
@@ -381,7 +181,7 @@ options(width = 120)
 devtools::session_info()
 ```
 
-Code for creating the vignette
+# Code for creating the vignette
 
 ```{r createVignette, eval=FALSE}
 ## Create the vignette

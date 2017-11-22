@@ -70,6 +70,7 @@ document.addEventListener("DOMContentLoaded", function() {
 <li><a href="#compare-colon-and-liver-expression-in-gtex"><span class="toc-section-number">13</span> Compare colon and liver expression in GTEx</a></li>
 <li><a href="#comparing-degs-between-analyses"><span class="toc-section-number">14</span> Comparing DEGs between analyses</a></li>
 <li><a href="#vignette-information"><span class="toc-section-number">15</span> Vignette information</a></li>
+<li><a href="#code-for-creating-the-vignette"><span class="toc-section-number">16</span> Code for creating the vignette</a></li>
 </ul>
 </div>
 
@@ -635,7 +636,6 @@ ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) +
 # ggplot(data = sumdf, aes(x=comparison, y = genes,label = genes)) + 
 #   labs(y=&quot;No. of Genes&quot;,x=&quot;Comparison&quot;,title=&quot;Significantly differentially expressed genes by analysis&quot;) +
 #     geom_bar(stat=&quot;identity&quot;, aes(fill = analysis),position=&quot;dodge&quot;) +
-#     geom_text(aes(fill=analysis),size = 10, position = position_dodge(width = 0.9),colour=&quot;black&quot;) +
 #     scale_fill_manual(values=c(&quot;#0CBD18&quot;,&quot;#FF6699&quot;,&quot;#3BC4C7&quot;,&quot;#FFDE0D&quot;))+
 #     theme_bw()+
 #     theme(legend.title=element_blank(),legend.text=element_text(size=30),plot.title = element_text(hjust = 0.5),text = element_text(size=30), panel.border = element_blank(), panel.grid.major = element_blank(),
@@ -820,10 +820,10 @@ legend('topleft', col = bright[c(1,7,4)], c(&quot;GTEx_MC:PC&quot;, &quot;GTEx_N
 <h1><span class="header-section-number">15</span> Vignette information</h1>
 <pre class="r"><code>## Time spent creating this report:
 diff(c(startTime, Sys.time()))</code></pre>
-<pre><code>## Time difference of 19.17188 mins</code></pre>
+<pre><code>## Time difference of 3.583901 mins</code></pre>
 <pre class="r"><code>## Date this report was generated
 message(Sys.time())</code></pre>
-<pre><code>## 2017-10-03 14:11:20</code></pre>
+<pre><code>## 2017-11-22 10:51:40</code></pre>
 <pre class="r"><code>## Reproducibility info
 options(width = 120)
 devtools::session_info()</code></pre>
@@ -835,7 +835,7 @@ devtools::session_info()</code></pre>
 ##  language (EN)                                       
 ##  collate  en_US.UTF-8                                
 ##  tz       &lt;NA&gt;                                       
-##  date     2017-10-03</code></pre>
+##  date     2017-11-22</code></pre>
 <pre><code>## Packages --------------------------------------------------------------------------------------------------------------</code></pre>
 <pre><code>##  package              * version  date       source        
 ##  acepack                1.4.1    2016-10-29 CRAN (R 3.3.1)
@@ -875,7 +875,7 @@ devtools::session_info()</code></pre>
 ##  digest                 0.6.12   2017-01-27 CRAN (R 3.3.1)
 ##  doRNG                  1.6.6    2017-04-10 CRAN (R 3.3.1)
 ##  downloader             0.4      2015-07-09 CRAN (R 3.3.1)
-##  dplyr                * 0.7.2    2017-07-20 CRAN (R 3.3.3)
+##  dplyr                * 0.7.4    2017-09-28 CRAN (R 3.3.3)
 ##  edgeR                * 3.16.5   2016-12-16 Bioconductor  
 ##  evaluate               0.10.1   2017-06-24 CRAN (R 3.3.3)
 ##  extrafont            * 0.17     2014-12-08 CRAN (R 3.3.1)
@@ -896,7 +896,7 @@ devtools::session_info()</code></pre>
 ##  graphics             * 3.3.3    2017-05-18 local         
 ##  grDevices            * 3.3.3    2017-05-18 local         
 ##  grid                   3.3.3    2017-05-18 local         
-##  gridExtra              2.3      2017-09-09 CRAN (R 3.3.3)
+##  gridExtra            * 2.3      2017-09-09 CRAN (R 3.3.3)
 ##  gtable                 0.2.0    2016-02-26 CRAN (R 3.3.0)
 ##  haven                  1.1.0    2017-07-09 CRAN (R 3.3.3)
 ##  Hmisc                  4.0-3    2017-05-02 CRAN (R 3.3.1)
@@ -939,7 +939,9 @@ devtools::session_info()</code></pre>
 ##  Rcpp                   0.12.12  2017-07-15 CRAN (R 3.3.3)
 ##  RCurl                  1.95-4.8 2016-03-01 CRAN (R 3.3.0)
 ##  [ reached getOption(&quot;max.print&quot;) -- omitted 41 rows ]</code></pre>
-<p>Code for creating the vignette</p>
+</div>
+<div id="code-for-creating-the-vignette" class="section level1">
+<h1><span class="header-section-number">16</span> Code for creating the vignette</h1>
 <pre class="r"><code>## Create the vignette
 library('rmarkdown')
 system.time(render('/dcl01/leek/data/sellis/barcoding/phenopredict_usecase/dgea_analysis.Rmd', 'BiocStyle::html_document'))
